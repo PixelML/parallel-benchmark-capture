@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { BenchmarkController } from "../src/controller.mjs";
@@ -132,6 +132,64 @@ test("exact live mode rejects a stale or differently bound sidecar", async () =>
       controller.captureLive({ concurrency: 1, maxTokens: 1, runId: "exact_stale" }),
       /does not match the owner-supplied run/,
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("exact export claims are atomic across concurrent controllers", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "parallelhue-race-"));
+  const captureDir = path.join(root, "captures");
+  try {
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const parallelhueRunId = attempt.toString(16).padStart(32, "0");
+      const fingerprint = attempt.toString(16).padStart(64, "0");
+      const controllers = [1, 2].map(() => new BenchmarkController({ captureDir }));
+      const outcomes = await Promise.allSettled(controllers.map((controller, index) => controller.claimParallelHueExport({
+        parallelhueRunId,
+        fingerprint,
+        controllerRunId: `race_${attempt}_${index}`,
+      })));
+      assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
+      assert.equal(outcomes.filter((outcome) => outcome.status === "rejected" && /already consumed/.test(outcome.reason?.message || "")).length, 1);
+    }
+    const ledger = JSON.parse(await readFile(path.join(captureDir, ".parallelhue-export-ledger.json"), "utf8"));
+    assert.equal(ledger.entries.length, 20);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("exact export claims remain unique after 257 later claims and restart", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "parallelhue-retention-"));
+  const captureDir = path.join(root, "captures");
+  const firstRunId = "e".repeat(32);
+  const firstFingerprint = "f".repeat(64);
+  try {
+    const controller = new BenchmarkController({ captureDir });
+    await controller.claimParallelHueExport({
+      parallelhueRunId: firstRunId,
+      fingerprint: firstFingerprint,
+      controllerRunId: "first_claim",
+    });
+    for (let index = 1; index <= 257; index += 1) {
+      await controller.claimParallelHueExport({
+        parallelhueRunId: index.toString(16).padStart(32, "0"),
+        fingerprint: (index + 0x1000).toString(16).padStart(64, "0"),
+        controllerRunId: `later_${index}`,
+      });
+    }
+    const restartedController = new BenchmarkController({ captureDir });
+    await assert.rejects(
+      restartedController.claimParallelHueExport({
+        parallelhueRunId: firstRunId,
+        fingerprint: firstFingerprint,
+        controllerRunId: "restarted_claim",
+      }),
+      /already consumed/,
+    );
+    const ledger = JSON.parse(await readFile(path.join(captureDir, ".parallelhue-export-ledger.json"), "utf8"));
+    assert.equal(ledger.entries.length, 258);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

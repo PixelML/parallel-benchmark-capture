@@ -43,8 +43,10 @@ The exact adapter is pinned to ParallelHue revision
 [`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
 An owning experiment supplies a fresh run ID, a sanitized same-run sidecar
 export, and its SHA-256 fingerprint. The controller creates a fresh local run
-binding and claims that export once in a private single-use ledger; a second
-controller run cannot consume the same run ID or export fingerprint. For stream
+binding and claims that export through an atomic private ledger transaction; the
+ledger retains every claim so a second controller run cannot consume the same
+run ID or export fingerprint, even after restart. Lock timeouts and ledger
+corruption fail closed. For stream
 `i`, the controller sends
 `ph1_<32-hex-run-id>_<i>` in the OpenAI-compatible request body's
 `request_id`; the sidecar must carry the same run ID and request ID, with

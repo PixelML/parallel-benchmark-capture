@@ -66,9 +66,10 @@ The adapter is pinned to the public ParallelHue revision
 [`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
 The owning experiment must supply the fresh 32-character run ID and its
 same-run, sanitized sidecar and its SHA-256 fingerprint together. The
-controller creates a fresh local run binding, claims the handoff once in a
-private single-use ledger, and refuses a previously consumed run ID or export
-fingerprint. For each stream it sends the official `ph1_<run_id>_<stream>` value
+controller creates a fresh local run binding, claims the handoff once through an
+atomic private ledger transaction, and retains every claim so a previously
+consumed run ID or export fingerprint is refused even after restart; lock
+timeouts and ledger corruption fail closed. For each stream it sends the official `ph1_<run_id>_<stream>` value
 as the request body's `request_id`, then requires the sidecar's run ID, request
 ID, and `choice_index: 0` to match before reconciling text and token IDs. A
 stale, replayed, or differently bound sidecar fails closed before any request

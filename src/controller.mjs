@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rmdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDemoRecord } from "./demo-fixture.mjs";
@@ -21,6 +22,58 @@ const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const DEFAULT_FIXTURE = path.join(PROJECT_ROOT, "fixtures", "replay-c16.json");
 const DEFAULT_PUBLIC_DIR = path.join(PROJECT_ROOT, "public");
 const PARALLELHUE_EXPORT_LEDGER = ".parallelhue-export-ledger.json";
+const PARALLELHUE_EXPORT_LOCK = ".parallelhue-export-ledger.lock";
+const PARALLELHUE_LOCK_ATTEMPTS = 200;
+const PARALLELHUE_LOCK_DELAY_MS = 10;
+
+async function acquireParallelHueLedgerLock(lockPath) {
+  for (let attempt = 0; attempt < PARALLELHUE_LOCK_ATTEMPTS; attempt += 1) {
+    try {
+      await mkdir(lockPath, { mode: 0o700 });
+      return async () => {
+        try {
+          await rmdir(lockPath);
+        } catch {
+          throw new SchemaError("exact telemetry export ledger lock could not be released");
+        }
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw new SchemaError("exact telemetry export ledger lock is unavailable");
+      }
+      await new Promise((resolve) => setTimeout(resolve, PARALLELHUE_LOCK_DELAY_MS));
+    }
+  }
+  throw new SchemaError("exact telemetry export ledger lock is busy");
+}
+
+async function writeParallelHueLedgerAtomically(ledgerPath, ledger) {
+  const temporaryPath = `${ledgerPath}.${process.pid}.${randomUUID()}.tmp`;
+  const payload = `${JSON.stringify(ledger, null, 2)}\n`;
+  let handle = null;
+  try {
+    handle = await open(temporaryPath, "wx", 0o600);
+    await handle.writeFile(payload, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporaryPath, ledgerPath);
+  } catch (error) {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // The original write error is the actionable failure.
+      }
+    }
+    try {
+      await rm(temporaryPath, { force: true });
+    } catch {
+      // A failed cleanup is safe because the temporary name is unique.
+    }
+    throw error;
+  }
+}
 
 function jsonResponse(response, value, status = 200) {
   const payload = JSON.stringify(value);
@@ -324,40 +377,46 @@ export class BenchmarkController {
     }
     await mkdir(this.captureDir, { recursive: true, mode: 0o700 });
     const ledgerPath = path.join(this.captureDir, PARALLELHUE_EXPORT_LEDGER);
-    let ledger = { schema_version: 1, entries: [] };
+    const lockPath = path.join(this.captureDir, PARALLELHUE_EXPORT_LOCK);
+    const releaseLock = await acquireParallelHueLedgerLock(lockPath);
     try {
-      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw new SchemaError("exact telemetry export ledger is unreadable");
-    }
-    if (!ledger || ledger.schema_version !== 1 || !Array.isArray(ledger.entries)) {
-      throw new SchemaError("exact telemetry export ledger is invalid");
-    }
-    if (!ledger.entries.every((entry) => (
-      entry &&
-      typeof entry.parallelhue_run_id === "string" && /^[0-9a-f]{32}$/.test(entry.parallelhue_run_id) &&
-      typeof entry.export_sha256 === "string" && /^[0-9a-f]{64}$/.test(entry.export_sha256) &&
-      typeof entry.controller_run_id === "string"
-    ))) {
-      throw new SchemaError("exact telemetry export ledger is invalid");
-    }
-    if (ledger.entries.some((entry) => entry?.parallelhue_run_id === safeRun || entry?.export_sha256 === safeFingerprint)) {
-      throw new SchemaError("exact telemetry export was already consumed");
-    }
-    this.consumedParallelHueExports.add(claimKey);
-    try {
-      ledger.entries = [
-        ...ledger.entries.slice(-255),
-        {
-          parallelhue_run_id: safeRun,
-          export_sha256: safeFingerprint,
-          controller_run_id: String(controllerRunId || "unknown").slice(0, 80),
-        },
-      ];
-      await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 });
-    } catch (error) {
-      this.consumedParallelHueExports.delete(claimKey);
-      throw new SchemaError("exact telemetry export ledger could not be written");
+      let ledger = { schema_version: 1, entries: [] };
+      try {
+        ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw new SchemaError("exact telemetry export ledger is unreadable");
+      }
+      if (!ledger || ledger.schema_version !== 1 || !Array.isArray(ledger.entries)) {
+        throw new SchemaError("exact telemetry export ledger is invalid");
+      }
+      if (!ledger.entries.every((entry) => (
+        entry &&
+        typeof entry.parallelhue_run_id === "string" && /^[0-9a-f]{32}$/.test(entry.parallelhue_run_id) &&
+        typeof entry.export_sha256 === "string" && /^[0-9a-f]{64}$/.test(entry.export_sha256) &&
+        typeof entry.controller_run_id === "string"
+      ))) {
+        throw new SchemaError("exact telemetry export ledger is invalid");
+      }
+      if (ledger.entries.some((entry) => entry?.parallelhue_run_id === safeRun || entry?.export_sha256 === safeFingerprint)) {
+        throw new SchemaError("exact telemetry export was already consumed");
+      }
+      this.consumedParallelHueExports.add(claimKey);
+      try {
+        ledger.entries = [
+          ...ledger.entries,
+          {
+            parallelhue_run_id: safeRun,
+            export_sha256: safeFingerprint,
+            controller_run_id: String(controllerRunId || "unknown").slice(0, 80),
+          },
+        ];
+        await writeParallelHueLedgerAtomically(ledgerPath, ledger);
+      } catch {
+        this.consumedParallelHueExports.delete(claimKey);
+        throw new SchemaError("exact telemetry export ledger could not be written");
+      }
+    } finally {
+      await releaseLock();
     }
   }
 

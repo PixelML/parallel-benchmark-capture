@@ -5,7 +5,8 @@ receipt and makes no scheduler-step claim in the checked-in fixture or video.
 
 ## Automated checks
 
-- `npm test`: 13 tests passed.
+- `npm test`: 15 tests passed, including concurrent claim races and post-restart
+  retention beyond 256 later claims.
 - `npm run validate:fixture`: 130 events, 16 streams.
 - Ajv probes cover the shared event, run, and summary schemas with valid and
   invalid delta and `run.completed` fixtures; runtime validation rejects the
@@ -37,7 +38,8 @@ The browser and HyperFrames project receive sanitized replay events only.
 Controller endpoint configuration and authorization headers are process-local;
 they are not emitted in events, receipts, browser bundles, logs, or media
 metadata. The exact telemetry adapter is opt-in and fails closed unless a
-fresh owner-bound run ID, matching export fingerprint, and single-use,
-ordered, version-1 ParallelHue sidecar reconcile every stream. The adapter
+fresh owner-bound run ID, matching export fingerprint, and atomic, durable
+single-use claim ledger before the ordered, version-1 ParallelHue sidecar can
+reconcile every stream. The adapter
 contract is pinned to ParallelHue revision
 `be9b02680f0a2326cc7068dc592dd0ad2fe7de71`.
