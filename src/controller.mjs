@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDemoRecord } from "./demo-fixture.mjs";
 import { computeSummary } from "./metrics.mjs";
-import { indexTelemetryByStream, loadParallelHueTelemetry, reconcileTelemetry } from "./parallelhue-adapter.mjs";
+import { indexTelemetryByStream, loadParallelHueTelemetryExport, reconcileTelemetry } from "./parallelhue-adapter.mjs";
 import { extractDelta, parseSseBody } from "./sse.mjs";
 import {
   createRequestId,
@@ -20,6 +20,7 @@ import {
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_FIXTURE = path.join(PROJECT_ROOT, "fixtures", "replay-c16.json");
 const DEFAULT_PUBLIC_DIR = path.join(PROJECT_ROOT, "public");
+const PARALLELHUE_EXPORT_LEDGER = ".parallelhue-export-ledger.json";
 
 function jsonResponse(response, value, status = 200) {
   const payload = JSON.stringify(value);
@@ -82,6 +83,13 @@ function safeParallelHueRunId(value) {
 
 function parallelHueRequestId(runId, streamIndex) {
   return `ph1_${safeParallelHueRunId(runId)}_${streamIndex}`;
+}
+
+function safeParallelHueFingerprint(value) {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new SchemaError("exact telemetry requires a SHA-256 export fingerprint");
+  }
+  return value;
 }
 
 function normalizeUsage(value) {
@@ -164,6 +172,7 @@ export class BenchmarkController {
     telemetryMode = process.env.BENCH_TELEMETRY_MODE || "SSE CHUNK MODE",
     telemetryFile = process.env.BENCH_PARALLELHUE_EVENTS_FILE || "",
     parallelhueRunId = process.env.BENCH_PARALLELHUE_RUN_ID || "",
+    parallelhueExportSha256 = process.env.BENCH_PARALLELHUE_EXPORT_SHA256 || "",
   } = {}) {
     this.fixturePath = fixturePath;
     this.publicDir = publicDir;
@@ -174,6 +183,8 @@ export class BenchmarkController {
     this.telemetryMode = telemetryMode === "EXACT SCHEDULER STEP" ? telemetryMode : "SSE CHUNK MODE";
     this.telemetryFile = telemetryFile;
     this.parallelhueRunId = parallelhueRunId;
+    this.parallelhueExportSha256 = parallelhueExportSha256;
+    this.consumedParallelHueExports = new Set();
     this.runs = new Map();
   }
 
@@ -216,6 +227,7 @@ export class BenchmarkController {
     if (!this.endpoint || !/^https?:\/\//i.test(this.endpoint)) {
       throw new SchemaError("live endpoint is not configured");
     }
+    const selectedRunId = runId || createRunId("run");
     let telemetryByStream = new Map();
     let selectedParallelHueRunId = null;
     if (this.telemetryMode === "EXACT SCHEDULER STEP") {
@@ -223,7 +235,15 @@ export class BenchmarkController {
       // The owning experiment supplies this fresh run ID in the same handoff
       // as the sidecar. Never infer it from a file that could be stale.
       selectedParallelHueRunId = safeParallelHueRunId(this.parallelhueRunId);
-      telemetryByStream = indexTelemetryByStream(await loadParallelHueTelemetry(this.telemetryFile));
+      const expectedFingerprint = safeParallelHueFingerprint(this.parallelhueExportSha256);
+      const telemetryExport = await loadParallelHueTelemetryExport(this.telemetryFile);
+      if (telemetryExport.runId !== selectedParallelHueRunId) {
+        throw new SchemaError("exact telemetry run_id does not match the owner-supplied run");
+      }
+      if (telemetryExport.fingerprint !== expectedFingerprint) {
+        throw new SchemaError("exact telemetry export fingerprint does not match the owner handoff");
+      }
+      telemetryByStream = indexTelemetryByStream(telemetryExport.byRequest);
       for (let streamIndex = 0; streamIndex < selectedConcurrency; streamIndex += 1) {
         const events = telemetryByStream.get(streamIndex);
         if (!events?.length) throw new SchemaError("exact telemetry is missing a requested stream");
@@ -240,8 +260,12 @@ export class BenchmarkController {
           }
         }
       }
+      await this.claimParallelHueExport({
+        parallelhueRunId: selectedParallelHueRunId,
+        fingerprint: telemetryExport.fingerprint,
+        controllerRunId: selectedRunId,
+      });
     }
-    const selectedRunId = runId || createRunId("run");
     const run = new RunState({
       runId: selectedRunId,
       runMode: "LIVE",
@@ -289,6 +313,52 @@ export class BenchmarkController {
     run.closeSubscribers();
     await this.persistRun(run);
     return run;
+  }
+
+  async claimParallelHueExport({ parallelhueRunId, fingerprint, controllerRunId }) {
+    const safeRun = safeParallelHueRunId(parallelhueRunId);
+    const safeFingerprint = safeParallelHueFingerprint(fingerprint);
+    const claimKey = `${safeRun}:${safeFingerprint}`;
+    if (this.consumedParallelHueExports.has(claimKey)) {
+      throw new SchemaError("exact telemetry export was already consumed");
+    }
+    await mkdir(this.captureDir, { recursive: true, mode: 0o700 });
+    const ledgerPath = path.join(this.captureDir, PARALLELHUE_EXPORT_LEDGER);
+    let ledger = { schema_version: 1, entries: [] };
+    try {
+      ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw new SchemaError("exact telemetry export ledger is unreadable");
+    }
+    if (!ledger || ledger.schema_version !== 1 || !Array.isArray(ledger.entries)) {
+      throw new SchemaError("exact telemetry export ledger is invalid");
+    }
+    if (!ledger.entries.every((entry) => (
+      entry &&
+      typeof entry.parallelhue_run_id === "string" && /^[0-9a-f]{32}$/.test(entry.parallelhue_run_id) &&
+      typeof entry.export_sha256 === "string" && /^[0-9a-f]{64}$/.test(entry.export_sha256) &&
+      typeof entry.controller_run_id === "string"
+    ))) {
+      throw new SchemaError("exact telemetry export ledger is invalid");
+    }
+    if (ledger.entries.some((entry) => entry?.parallelhue_run_id === safeRun || entry?.export_sha256 === safeFingerprint)) {
+      throw new SchemaError("exact telemetry export was already consumed");
+    }
+    this.consumedParallelHueExports.add(claimKey);
+    try {
+      ledger.entries = [
+        ...ledger.entries.slice(-255),
+        {
+          parallelhue_run_id: safeRun,
+          export_sha256: safeFingerprint,
+          controller_run_id: String(controllerRunId || "unknown").slice(0, 80),
+        },
+      ];
+      await writeFile(ledgerPath, `${JSON.stringify(ledger, null, 2)}\n`, { mode: 0o600 });
+    } catch (error) {
+      this.consumedParallelHueExports.delete(claimKey);
+      throw new SchemaError("exact telemetry export ledger could not be written");
+    }
   }
 
   async captureStream({ run, streamIndex, prompt, maxTokens, timeoutMs, telemetryEvents = [] }) {

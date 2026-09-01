@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { validateEvent, SchemaError } from "./schema.mjs";
 
@@ -11,7 +12,16 @@ export const PARALLELHUE_PROTOCOL_REVISION = "be9b02680f0a2326cc7068dc592dd0ad2f
  * token IDs against each SSE chunk before emitting EXACT SCHEDULER STEP.
  */
 export async function loadParallelHueTelemetry(filePath) {
-  if (!filePath) return new Map();
+  return (await loadParallelHueTelemetryExport(filePath)).byRequest;
+}
+
+/**
+ * Read one owner-bound export and return its single-use fingerprint. The
+ * controller claims this fingerprint before dispatch so the same export
+ * cannot be replayed for a second measured run.
+ */
+export async function loadParallelHueTelemetryExport(filePath) {
+  if (!filePath) return { byRequest: new Map(), runId: null, fingerprint: null };
   const text = await readFile(filePath, "utf8");
   const byRequest = new Map();
   const expected = new Map();
@@ -39,7 +49,11 @@ export async function loadParallelHueTelemetry(filePath) {
     events.push(event);
     byRequest.set(event.request_id, events);
   }
-  return byRequest;
+  return {
+    byRequest,
+    runId: sidecarRunId,
+    fingerprint: createHash("sha256").update(text, "utf8").digest("hex"),
+  };
 }
 
 export function indexTelemetryByStream(byRequest) {

@@ -42,7 +42,7 @@
     },
     "failure_kind": { "enum": ["http", "timeout", "wedge", "parse", "usage_unavailable", "telemetry", "unknown"] },
     "error_code": { "type": "string", "pattern": "^[a-z0-9_]{1,48}$" },
-    "summary": { "type": "object" }
+    "summary": { "$ref": "summary.schema.json" }
   },
   "allOf": [
     {

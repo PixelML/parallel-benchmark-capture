@@ -76,6 +76,17 @@ function boundedInt(value, field, minimum, maximum) {
   return value;
 }
 
+function requiredProperty(input, field, prefix = "summary") {
+  assert(Object.hasOwn(input, field), `${prefix} requires ${field}`);
+  return input[field];
+}
+
+function nullableNumber(value, field) {
+  if (value === null) return null;
+  assert(typeof value === "number" && Number.isFinite(value) && value >= 0, `${field} must be a non-negative number or null`);
+  return Number(value.toFixed(3));
+}
+
 function safeRunId(value) {
   assert(typeof value === "string" && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value), "invalid run_id");
   return value;
@@ -208,39 +219,45 @@ export function validateEvent(input) {
 }
 
 export function validateSummary(input) {
+  assert(input && typeof input === "object" && !Array.isArray(input), "summary must be an object");
+  const requestedConcurrency = requiredProperty(input, "requested_concurrency");
+  const throughputDistribution = requiredProperty(input, "throughput_distribution");
+  const failureLabels = requiredProperty(input, "failure_labels");
+  assert(Array.isArray(throughputDistribution), "summary.throughput_distribution must be an array");
+  assert(Array.isArray(failureLabels), "summary.failure_labels must be an array");
+  assert(throughputDistribution.length <= 64, "summary.throughput_distribution exceeds the event limit");
+  assert(failureLabels.length <= 16, "summary.failure_labels exceeds the event limit");
   const summary = {
-    requested_concurrency: boundedInt(input.requested_concurrency, "requested_concurrency", 1, 64),
-    active_count: nonNegativeInt(input.active_count || 0, "active_count"),
-    completed_count: nonNegativeInt(input.completed_count || 0, "completed_count"),
-    failed_count: nonNegativeInt(input.failed_count || 0, "failed_count"),
-    wall_time_ms: nonNegativeInt(input.wall_time_ms || 0, "wall_time_ms"),
-    total_completion_tokens: nonNegativeInt(input.total_completion_tokens || 0, "total_completion_tokens"),
-    aggregate_decode_tok_s: typeof input.aggregate_decode_tok_s === "number" && Number.isFinite(input.aggregate_decode_tok_s)
-      ? Math.max(0, Number(input.aggregate_decode_tok_s.toFixed(3)))
-      : null,
-    ttft_ms: typeof input.ttft_ms === "number" && Number.isFinite(input.ttft_ms)
-      ? Math.max(0, Number(input.ttft_ms.toFixed(3)))
-      : null,
-    completion_count: nonNegativeInt(input.completion_count || 0, "completion_count"),
-    throughput_distribution: Array.isArray(input.throughput_distribution)
-      ? input.throughput_distribution.slice(0, 64).map((item) => ({
-        stream_index: nonNegativeInt(item.stream_index, "throughput_distribution.stream_index"),
-        completion_tokens: nonNegativeInt(item.completion_tokens, "throughput_distribution.completion_tokens"),
-        wall_time_ms: nonNegativeInt(item.wall_time_ms, "throughput_distribution.wall_time_ms"),
-        tok_s: typeof item.tok_s === "number" && Number.isFinite(item.tok_s)
-          ? Math.max(0, Number(item.tok_s.toFixed(3)))
-          : null,
-        status: item.status === "success" ? "success" : "failed",
-        ttft_ms: typeof item.ttft_ms === "number" && Number.isFinite(item.ttft_ms)
-          ? Math.max(0, Number(item.ttft_ms.toFixed(3)))
-          : null,
-        failure_kind: item.failure_kind && FAILURE_KINDS.includes(item.failure_kind) ? item.failure_kind : null,
-      }))
-      : [],
-    failure_labels: Array.isArray(input.failure_labels)
-      ? input.failure_labels.filter((item) => FAILURE_KINDS.includes(item)).slice(0, 16)
-      : [],
-    winning_recipe: sanitizeText(String(input.winning_recipe || "not selected"), 120),
+    requested_concurrency: boundedInt(requestedConcurrency, "requested_concurrency", 1, 64),
+    active_count: nonNegativeInt(requiredProperty(input, "active_count"), "active_count"),
+    completed_count: nonNegativeInt(requiredProperty(input, "completed_count"), "completed_count"),
+    failed_count: nonNegativeInt(requiredProperty(input, "failed_count"), "failed_count"),
+    wall_time_ms: nonNegativeInt(requiredProperty(input, "wall_time_ms"), "wall_time_ms"),
+    total_completion_tokens: nonNegativeInt(requiredProperty(input, "total_completion_tokens"), "total_completion_tokens"),
+    aggregate_decode_tok_s: nullableNumber(requiredProperty(input, "aggregate_decode_tok_s"), "aggregate_decode_tok_s"),
+    ttft_ms: nullableNumber(requiredProperty(input, "ttft_ms"), "ttft_ms"),
+    completion_count: nonNegativeInt(requiredProperty(input, "completion_count"), "completion_count"),
+    throughput_distribution: throughputDistribution.map((item) => {
+      assert(item && typeof item === "object" && !Array.isArray(item), "throughput_distribution entries must be objects");
+      const failureKind = requiredProperty(item, "failure_kind", "throughput_distribution entry");
+      assert(failureKind === null || FAILURE_KINDS.includes(failureKind), "throughput_distribution.failure_kind is invalid");
+      const status = requiredProperty(item, "status", "throughput_distribution entry");
+      assert(status === "success" || status === "failed", "throughput_distribution.status is invalid");
+      return {
+        stream_index: boundedInt(requiredProperty(item, "stream_index", "throughput_distribution entry"), "throughput_distribution.stream_index", 0, 63),
+        completion_tokens: nonNegativeInt(requiredProperty(item, "completion_tokens", "throughput_distribution entry"), "throughput_distribution.completion_tokens"),
+        wall_time_ms: nonNegativeInt(requiredProperty(item, "wall_time_ms", "throughput_distribution entry"), "throughput_distribution.wall_time_ms"),
+        tok_s: nullableNumber(requiredProperty(item, "tok_s", "throughput_distribution entry"), "throughput_distribution.tok_s"),
+        status,
+        ttft_ms: nullableNumber(requiredProperty(item, "ttft_ms", "throughput_distribution entry"), "throughput_distribution.ttft_ms"),
+        failure_kind: failureKind,
+      };
+    }),
+    failure_labels: failureLabels.map((item) => {
+      assert(FAILURE_KINDS.includes(item), "summary.failure_labels contains an invalid kind");
+      return item;
+    }),
+    winning_recipe: sanitizeText(requiredProperty(input, "winning_recipe"), 120),
   };
   return summary;
 }
@@ -254,7 +271,8 @@ export function validateRunRecord(record) {
   assert(Array.isArray(record.events), "run record events must be an array");
   const events = record.events.map(validateEvent);
   for (const event of events) assert(event.run_id === runId, "event run_id mismatch");
-  const summary = validateSummary(record.summary || {});
+  assert(record.summary && typeof record.summary === "object" && !Array.isArray(record.summary), "run record requires summary");
+  const summary = validateSummary(record.summary);
   return {
     schema_version: SCHEMA_VERSION,
     kind: "benchmark.run",

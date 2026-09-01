@@ -58,18 +58,22 @@ BENCH_MODEL='model-alias' \
 BENCH_TELEMETRY_MODE='EXACT SCHEDULER STEP' \
 BENCH_PARALLELHUE_EVENTS_FILE='./telemetry.local.ndjson' \
 BENCH_PARALLELHUE_RUN_ID='0123456789abcdef0123456789abcdef' \
+BENCH_PARALLELHUE_EXPORT_SHA256='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
 npm run capture -- --concurrency 16
 ```
 
 The adapter is pinned to the public ParallelHue revision
 [`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
 The owning experiment must supply the fresh 32-character run ID and its
-same-run, sanitized sidecar together. For each stream the controller sends the
-official `ph1_<run_id>_<stream>` value as the request body's `request_id`, then
-requires the sidecar's run ID, request ID, and `choice_index: 0` to match before
-reconciling text and token IDs. A stale or differently bound sidecar fails
-closed before any request is sent. Without this explicit opt-in, all ordinary
-OpenAI-compatible streams remain `SSE CHUNK MODE`.
+same-run, sanitized sidecar and its SHA-256 fingerprint together. The
+controller creates a fresh local run binding, claims the handoff once in a
+private single-use ledger, and refuses a previously consumed run ID or export
+fingerprint. For each stream it sends the official `ph1_<run_id>_<stream>` value
+as the request body's `request_id`, then requires the sidecar's run ID, request
+ID, and `choice_index: 0` to match before reconciling text and token IDs. A
+stale, replayed, or differently bound sidecar fails closed before any request
+is sent. Without this explicit opt-in, all ordinary OpenAI-compatible streams
+remain `SSE CHUNK MODE`.
 
 ## Modes and metrics
 
@@ -94,6 +98,7 @@ src/mock-endpoint.mjs          deterministic OpenAI-compatible SSE server
 public/index.html               responsive dashboard
 fixtures/replay-c16.json       sanitized replay source of truth
 schemas/*.schema.json           JSON Schema contracts
+schemas/fixtures/*.json         valid/invalid schema probes
 hyperframes/                    editable replay-only video project
 ```
 

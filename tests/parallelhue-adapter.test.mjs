@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { BenchmarkController } from "../src/controller.mjs";
 import { createMockServer } from "../src/mock-endpoint.mjs";
-import { indexTelemetryByStream, loadParallelHueTelemetry, reconcileTelemetry } from "../src/parallelhue-adapter.mjs";
+import { indexTelemetryByStream, loadParallelHueTelemetry, loadParallelHueTelemetryExport, reconcileTelemetry } from "../src/parallelhue-adapter.mjs";
 
 test("ParallelHue sidecar normalizes and reconciles exact scheduler steps", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "parallelhue-adapter-"));
@@ -59,6 +59,7 @@ test("exact live mode requires reconciled ParallelHue telemetry", async () => {
   })).join("\n") + "\n";
   const telemetryFile = path.join(root, "events.ndjson");
   await writeFile(telemetryFile, sidecar);
+  const telemetryExport = await loadParallelHueTelemetryExport(telemetryFile);
   const requests = [];
   const mock = createMockServer({ port: 0, delayMs: 1, onRequest: (body) => requests.push(body) });
   await mock.listen();
@@ -69,6 +70,7 @@ test("exact live mode requires reconciled ParallelHue telemetry", async () => {
       telemetryMode: "EXACT SCHEDULER STEP",
       telemetryFile,
       parallelhueRunId: runId,
+      parallelhueExportSha256: telemetryExport.fingerprint,
       captureDir: path.join(root, "captures"),
     });
     const run = await controller.captureLive({ concurrency: 1, maxTokens: 1, runId: "exact_test" });
@@ -80,6 +82,20 @@ test("exact live mode requires reconciled ParallelHue telemetry", async () => {
     assert.equal(requests[0].return_token_ids, true);
     assert.equal(run.events.filter((event) => event.event_type === "stream.delta").every((event) => event.mode === "EXACT SCHEDULER STEP"), true);
     assert.equal(run.events.find((event) => event.event_type === "stream.completed").mode, "EXACT SCHEDULER STEP");
+    const secondController = new BenchmarkController({
+      endpoint: `http://127.0.0.1:${mock.server.address().port}/v1/chat/completions`,
+      model: "mock-model",
+      telemetryMode: "EXACT SCHEDULER STEP",
+      telemetryFile,
+      parallelhueRunId: runId,
+      parallelhueExportSha256: telemetryExport.fingerprint,
+      captureDir: path.join(root, "captures"),
+    });
+    await assert.rejects(
+      secondController.captureLive({ concurrency: 1, maxTokens: 1, runId: "exact_second_run" }),
+      /already consumed/,
+    );
+    assert.equal(requests.length, 1);
   } finally {
     await mock.close();
     await rm(root, { recursive: true, force: true });
@@ -102,6 +118,7 @@ test("exact live mode rejects a stale or differently bound sidecar", async () =>
     text: "parallel ",
     finished: true,
   })}\n`);
+  const telemetryExport = await loadParallelHueTelemetryExport(telemetryFile);
   try {
     const controller = new BenchmarkController({
       endpoint: "http://127.0.0.1:1/v1/chat/completions",
@@ -109,6 +126,7 @@ test("exact live mode rejects a stale or differently bound sidecar", async () =>
       telemetryMode: "EXACT SCHEDULER STEP",
       telemetryFile,
       parallelhueRunId: "c".repeat(32),
+      parallelhueExportSha256: telemetryExport.fingerprint,
     });
     await assert.rejects(
       controller.captureLive({ concurrency: 1, maxTokens: 1, runId: "exact_stale" }),

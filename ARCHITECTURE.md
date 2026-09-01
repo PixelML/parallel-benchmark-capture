@@ -41,13 +41,17 @@ infers scheduler steps from transport chunks.
 
 The exact adapter is pinned to ParallelHue revision
 [`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
-An owning experiment supplies a fresh run ID and a sanitized, same-run sidecar
-export. For stream `i`, the controller sends
+An owning experiment supplies a fresh run ID, a sanitized same-run sidecar
+export, and its SHA-256 fingerprint. The controller creates a fresh local run
+binding and claims that export once in a private single-use ledger; a second
+controller run cannot consume the same run ID or export fingerprint. For stream
+`i`, the controller sends
 `ph1_<32-hex-run-id>_<i>` in the OpenAI-compatible request body's
 `request_id`; the sidecar must carry the same run ID and request ID, with
 `choice_index: 0`. The controller rejects stale/differently bound exports
 before dispatch and then reconciles every SSE chunk against the ordered text
-and token IDs. The run ID is controller-only and never enters a public event.
+and token IDs. The run IDs, fingerprint, and ledger are controller-only and
+never enter a public event.
 
 ## Live flow
 
@@ -79,4 +83,5 @@ grid first, then the four key numbers and winning recipe.
 - Completion tokens come only from a final usage object. Missing usage is an
   explicit `usage_unavailable` condition.
 - Exact telemetry is opt-in only; a fresh owner handoff binds the sidecar to a
-  single ParallelHue run and stale or mismatched IDs fail closed.
+  single ParallelHue run, the controller consumes it once, and stale or
+  mismatched IDs fail closed.
