@@ -25,7 +25,7 @@ npm run build
 npx --yes hyperframes@0.8.22 check
 npx --yes hyperframes@0.8.22 snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
 npx --yes hyperframes@0.8.22 render . --quality high --workers 2 --output ../docs/parallel-benchmark-capture.mp4
-ffmpeg -y -sseof -0.1 -i ../docs/parallel-benchmark-capture.mp4 -frames:v 1 ../docs/parallel-benchmark-capture-poster.png
+ffmpeg -y -i ../docs/parallel-benchmark-capture.mp4 -vf 'select=eq(n\,239)' -fps_mode vfr -frames:v 1 -update 1 ../docs/parallel-benchmark-capture-poster.png
 ```
 
 ## Boundary
