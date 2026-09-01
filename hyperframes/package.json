@@ -1,0 +1,11 @@
+{
+  "name": "pixelml-benchmark-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes preview",
+    "check": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes check",
+    "render": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes render"
+  }
+}

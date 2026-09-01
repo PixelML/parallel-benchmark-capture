@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "event_type": "stream.delta",
+  "run_id": "schema_fixture",
+  "elapsed_ms": 42,
+  "mode": "SSE CHUNK MODE"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "parallel-benchmark-capture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live OpenAI-compatible concurrency benchmark dashboard and HyperFrames video publisher.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "serve": "node bin/parallel-benchmark.mjs serve",
+    "mock": "node bin/parallel-benchmark.mjs mock",
+    "demo": "node bin/parallel-benchmark.mjs demo",
+    "capture": "node bin/parallel-benchmark.mjs capture",
+    "replay": "node bin/parallel-benchmark.mjs replay",
+    "validate:fixture": "node bin/parallel-benchmark.mjs validate-fixture"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1"
+  }
+}

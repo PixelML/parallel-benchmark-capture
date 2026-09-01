@@ -1,0 +1,13 @@
+{
+  "status": "template",
+  "duration_s": 8,
+  "fps": 30,
+  "canvas": { "w": 1080, "h": 1080, "aspect": "1:1" },
+  "style": "PixelML dark technical editorial, mobile-first for X; lime and aqua proof rails",
+  "beats": [
+    { "start_s": 0, "end_s": 1.0, "action": "Brand and 16-user outcome hook" },
+    { "start_s": 1.05, "end_s": 3.70, "action": "Live multi-stream grid resolves across 16 tiles" },
+    { "start_s": 3.74, "end_s": 5.42, "action": "Authoritative usage and SSE chunk truth label" },
+    { "start_s": 5.48, "end_s": 8, "action": "Four key numbers, recipe, and honest limitation" }
+  ]
+}

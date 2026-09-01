@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run.schema.json",
+  "title": "Parallel benchmark run",
+  "type": "object",
+  "required": ["schema_version", "kind", "run_id", "run_mode", "events", "summary"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "benchmark.run" },
+    "run_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+    "run_mode": { "enum": ["LIVE", "REPLAY"] },
+    "events": { "type": "array", "items": { "$ref": "event.schema.json" } },
+    "summary": { "$ref": "summary.schema.json" }
+  },
+  "additionalProperties": false
+}

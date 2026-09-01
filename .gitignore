@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+captures/
+renders/
+*.log
+*.mp4
+!docs/parallel-benchmark-capture.mp4
+*.mov
+*.webm

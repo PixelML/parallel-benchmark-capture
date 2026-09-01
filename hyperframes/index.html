@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1080, height=1080">
+    <title>PixelML parallel benchmark capture</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --bg: #071012;
+        --panel: #0d1a1d;
+        --panel-hi: #14282b;
+        --ink: #eef4f2;
+        --muted: #8e9e9f;
+        --line: #254348;
+        --lime: #c7f36a;
+        --aqua: #6fe1d0;
+        --amber: #ffc56b;
+        --rose: #ff8f91;
+        --mono: "SFMono-Regular", "Roboto Mono", ui-monospace, monospace;
+        --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 1080px; height: 1080px; overflow: hidden; background: var(--bg); }
+      body { color: var(--ink); font-family: var(--sans); }
+      #benchmark-stage { position: relative; width: 1080px; height: 1080px; overflow: hidden; background: radial-gradient(circle at 14% 10%, rgba(111,225,208,.14), transparent 36%), radial-gradient(circle at 90% 78%, rgba(199,243,106,.10), transparent 35%), var(--bg); }
+      #benchmark-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .42; background-image: linear-gradient(rgba(111,225,208,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(111,225,208,.035) 1px, transparent 1px); background-size: 36px 36px; }
+      .shell { position: absolute; inset: 0; padding: 52px 64px 44px; }
+      .top-rule { position: absolute; left: 64px; right: 64px; top: 32px; height: 3px; background: linear-gradient(90deg, var(--lime), var(--aqua), transparent 78%); transform-origin: left center; }
+      header { position: relative; z-index: 3; display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 28px; }
+      header > div:nth-child(2) { max-width: 390px; }
+      .logo { width: 190px; height: 62px; display: flex; align-items: center; }
+      .logo img { display: block; width: 175px; max-height: 62px; object-fit: contain; }
+      .eyebrow { color: var(--lime); font: 800 20px/1 var(--mono); letter-spacing: .06em; }
+      h1 { margin-top: 9px; font-size: 52px; line-height: .98; letter-spacing: -.05em; font-weight: 850; }
+      .subtitle { margin-top: 14px; color: var(--muted); font: 650 24px/1.15 var(--sans); }
+      .header-readout { position: absolute; right: 0; top: 2px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 300px; }
+      .readout { min-height: 66px; padding: 10px 12px; border: 1px solid var(--line); background: rgba(13,26,29,.88); }
+      .readout span { display: block; color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+      .readout strong { display: block; margin-top: 5px; color: var(--aqua); font: 750 25px/1 var(--mono); }
+      .hero { position: absolute; z-index: 3; left: 64px; right: 64px; top: 282px; display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+      .hero-label { color: var(--muted); font: 760 20px/1 var(--mono); letter-spacing: .09em; }
+      .hero-title { margin-top: 13px; color: var(--ink); font: 850 68px/.94 var(--sans); letter-spacing: -.06em; }
+      .hero-title em { color: var(--lime); font-style: normal; }
+      .status { padding: 10px 17px; border: 1px solid rgba(199,243,106,.58); border-radius: 999px; color: var(--lime); background: rgba(199,243,106,.09); font: 800 18px/1 var(--mono); white-space: nowrap; }
+      .proof { position: absolute; z-index: 2; left: 64px; top: 470px; width: 952px; height: 512px; }
+      .grid-panel { position: absolute; inset: 0; padding: 20px; border: 1px solid var(--line); border-radius: 24px; background: rgba(13,26,29,.93); box-shadow: 0 28px 70px rgba(0,0,0,.28); opacity: 0; }
+      .grid-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font: 12px var(--mono); letter-spacing: .06em; }
+      .grid-head strong { color: var(--aqua); font-weight: 650; }
+      .stream-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 8px; height: 438px; margin-top: 13px; }
+      .stream-card { position: relative; overflow: hidden; min-width: 0; padding: 10px; border: 1px solid #244047; border-radius: 7px; background: linear-gradient(145deg, rgba(20,40,43,.98), rgba(8,18,20,.98)); opacity: 0; }
+      .stream-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--aqua); opacity: .7; }
+      .stream-card:nth-child(4n+1)::before { background: var(--lime); }
+      .stream-card:nth-child(4n+2)::before { background: var(--aqua); }
+      .stream-card:nth-child(4n+3)::before { background: var(--amber); }
+      .stream-card:nth-child(4n)::before { background: var(--rose); }
+      .stream-top { display: flex; justify-content: space-between; color: var(--muted); font: 10px var(--mono); }
+      .stream-top strong { color: var(--ink); font-weight: 650; }
+      .stream-copy { margin-top: 12px; color: #c8d6d4; font: 12px/1.32 var(--mono); }
+      .stream-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 4px; background: #1b3438; }
+      .stream-bar i { display: block; width: 100%; height: 100%; background: var(--aqua); transform-origin: left center; }
+      .stream-card:nth-child(4n+1) .stream-bar i { background: var(--lime); }
+      .stream-card:nth-child(4n+3) .stream-bar i { background: var(--amber); }
+      .stream-count { position: absolute; right: 10px; bottom: 17px; color: var(--muted); font: 9px var(--mono); }
+      .receipt { position: absolute; inset: 0; padding: 36px 42px; border: 1px solid var(--line); border-radius: 24px; background: rgba(13,26,29,.96); box-shadow: 0 28px 70px rgba(0,0,0,.28); opacity: 0; }
+      .receipt-label { color: var(--aqua); font: 800 17px var(--mono); letter-spacing: .09em; }
+      .receipt-title { margin-top: 15px; font: 850 50px/.98 var(--sans); letter-spacing: -.045em; }
+      .receipt-body { max-width: 750px; margin-top: 16px; color: var(--muted); font: 650 23px/1.35 var(--sans); }
+      .receipt-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; }
+      .receipt-metric { padding: 19px 22px; border: 1px solid #2a4b4e; background: rgba(7,16,18,.84); }
+      .receipt-metric strong { display: block; color: var(--lime); font: 850 42px/1 var(--mono); }
+      .receipt-metric span { display: block; margin-top: 8px; color: var(--muted); font: 650 18px/1.2 var(--mono); }
+      .mode-note { margin-top: 27px; padding: 14px 17px; border-left: 4px solid var(--amber); background: rgba(255,197,107,.08); color: #f7d796; font: 650 17px/1.35 var(--mono); }
+      .summary { position: absolute; inset: 0; padding: 31px 42px 25px; border: 1px solid var(--line); border-radius: 24px; background: rgba(13,26,29,.97); box-shadow: 0 28px 70px rgba(0,0,0,.3); opacity: 0; }
+      .summary-label { color: var(--lime); font: 800 17px var(--mono); letter-spacing: .09em; }
+      .summary-title { margin-top: 12px; font: 850 43px/.98 var(--sans); letter-spacing: -.045em; }
+      .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 25px; }
+      .summary-item { min-height: 116px; padding: 16px; border: 1px solid #2a4b4e; background: rgba(7,16,18,.84); opacity: 0; }
+      .summary-item strong { display: block; color: var(--aqua); font: 850 31px/1 var(--mono); }
+      .summary-item span { display: block; margin-top: 8px; color: var(--muted); font: 650 15px/1.2 var(--mono); }
+      .verdict { margin-top: 23px; color: var(--ink); font: 800 27px/1.14 var(--sans); }
+      .limitation { margin-top: 13px; padding: 11px 14px; border-left: 4px solid var(--amber); background: rgba(255,197,107,.08); color: #f7d796; font: 650 16px/1.25 var(--mono); }
+      footer { position: absolute; z-index: 3; left: 64px; right: 64px; bottom: 38px; display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font: 650 14px var(--mono); opacity: 0; }
+      footer span:first-child { color: var(--lime); }
+      .rail { position: absolute; left: 64px; top: 456px; width: 952px; height: 3px; background: var(--lime); transform: scaleX(0); transform-origin: left center; box-shadow: 0 0 20px rgba(199,243,106,.7); }
+      .orb { position: absolute; z-index: 1; right: 80px; top: 160px; width: 180px; height: 180px; border: 1px solid rgba(111,225,208,.26); border-radius: 50%; opacity: .55; }
+      .orb::after { content: ""; position: absolute; inset: 22px; border: 1px solid rgba(199,243,106,.2); border-radius: 50%; }
+    </style>
+  </head>
+  <body>
+    <script id="benchmark-payload" type="application/json">{"title":"Parallel benchmark","subtitle":"16 simultaneous requests · deterministic replay","eyebrow":"SSE CHUNK MODE · SANITIZED REPLAY","status":"REPLAY PROOF","summary":[{"value":"16","label":"simultaneous requests"},{"value":"96","label":"successful completion tokens"},{"value":"70.8","label":"aggregate decode tok/s"},{"value":"102 ms","label":"median TTFT"}],"verdict":"A replayable 16-stream run is visible end to end.","limitation":"Synthetic receipt · SSE chunk mode · no scheduler-step claim","footer":["16 simultaneous requests","USAGE: AUTHORITATIVE","PixelML benchmark capture"],"fixture":{"streams":[{"stream_index":0,"completion_tokens":6,"preview":"route fan"},{"stream_index":1,"completion_tokens":6,"preview":"the out"},{"stream_index":2,"completion_tokens":6,"preview":"prompt the"},{"stream_index":3,"completion_tokens":6,"preview":"through requests"},{"stream_index":4,"completion_tokens":6,"preview":"one and"},{"stream_index":5,"completion_tokens":6,"preview":"safe keep"},{"stream_index":6,"completion_tokens":6,"preview":"controller the"},{"stream_index":7,"completion_tokens":6,"preview":"route receipt"},{"stream_index":8,"completion_tokens":6,"preview":"the fan"},{"stream_index":9,"completion_tokens":6,"preview":"prompt out"},{"stream_index":10,"completion_tokens":6,"preview":"through the"},{"stream_index":11,"completion_tokens":6,"preview":"one requests"},{"stream_index":12,"completion_tokens":6,"preview":"safe and"},{"stream_index":13,"completion_tokens":6,"preview":"controller keep"},{"stream_index":14,"completion_tokens":6,"preview":"route the"},{"stream_index":15,"completion_tokens":6,"preview":"the receipt"}]}}</script>
+    <div id="benchmark-stage" data-composition-id="parallel-benchmark-capture" data-width="1080" data-height="1080" data-duration="8">
+      <div class="orb" data-layout-ignore="true"></div>
+      <div class="shell">
+        <div id="top-rule" class="top-rule" data-layout-ignore="true"></div>
+        <header id="brand">
+          <div class="logo"><img src=".media/images/pixelml-logo.svg" alt="PixelML"></div>
+          <div>
+            <div id="eyebrow" class="eyebrow"></div>
+            <h1 id="title"></h1>
+            <p id="subtitle" class="subtitle"></p>
+          </div>
+          <div id="header-readout" class="header-readout"></div>
+        </header>
+        <section id="hero" class="hero">
+          <div><div id="hero-label" class="hero-label"></div><div id="hero-title" class="hero-title"></div></div>
+          <div id="status" class="status"></div>
+        </section>
+        <div id="rail" class="rail" data-layout-ignore="true"></div>
+        <main class="proof">
+          <section id="proof-grid" class="grid-panel"></section>
+          <section id="proof-receipt" class="receipt"></section>
+          <section id="summary-card" class="summary"></section>
+        </main>
+        <footer id="footer"><span></span><span></span><span></span></footer>
+      </div>
+    </div>
+    <script>
+      const data = JSON.parse(document.getElementById("benchmark-payload").textContent);
+      const fixture = data.fixture;
+      const setText = (selector, value) => { document.querySelector(selector).textContent = value; };
+      setText("#eyebrow", data.eyebrow);
+      setText("#title", data.title);
+      setText("#subtitle", data.subtitle);
+      setText("#hero-label", "SANITIZED REPLAY / MULTI-STREAM PROOF");
+      document.querySelector("#hero-title").innerHTML = "<em>16 users</em> generating in parallel";
+      setText("#status", data.status);
+      const readout = document.querySelector("#header-readout");
+      [["users", data.summary[0].value], ["tokens", data.summary[1].value], ["aggregate", `${data.summary[2].value} tok/s`]].forEach(([label, value]) => {
+        const item = document.createElement("div"); item.className = "readout";
+        const key = document.createElement("span"); key.textContent = label;
+        const val = document.createElement("strong"); val.textContent = value;
+        item.append(key, val); readout.append(item);
+      });
+      const grid = document.createElement("div");
+      grid.innerHTML = `<div class="grid-head"><strong>16 SIMULTANEOUS REQUESTS</strong><span>SSE CHUNK MODE · FINAL USAGE PENDING</span></div><div id="stream-grid" class="stream-grid"></div>`;
+      document.querySelector("#proof-grid").append(grid);
+      const streamGrid = document.querySelector("#stream-grid");
+      fixture.streams.forEach((stream) => {
+        const card = document.createElement("article"); card.className = "stream-card";
+        card.innerHTML = `<div class="stream-top"><strong>U${String(stream.stream_index).padStart(2, "0")}</strong><span>DONE</span></div><div class="stream-copy"></div><div class="stream-bar"><i></i></div><span class="stream-count"></span>`;
+        card.querySelector(".stream-copy").textContent = stream.preview;
+        card.querySelector(".stream-count").textContent = `${stream.completion_tokens} tokens`;
+        streamGrid.append(card);
+      });
+      const receipt = document.querySelector("#proof-receipt");
+      receipt.innerHTML = `<div class="receipt-label">02 · AUTHORITATIVE RECEIPT</div><div class="receipt-title">Usage closes the run.</div><div class="receipt-body">Final API usage is the source of truth. Transport chunks stay labeled as <strong>SSE CHUNK MODE</strong>; no scheduler step is inferred.</div><div class="receipt-metrics"><div class="receipt-metric"><strong>${data.summary[1].value}</strong><span>successful completion tokens</span></div><div class="receipt-metric"><strong>${data.summary[2].value}</strong><span>aggregate decode tok/s</span></div></div><div class="mode-note">TTFT median: ${data.summary[3].value} · 16/16 streams complete · no failure labels</div>`;
+      const summary = document.querySelector("#summary-card");
+      summary.innerHTML = `<div class="summary-label">VALIDATED RESULT · REPLAY</div><div class="summary-title">The run resolves to four facts.</div><div id="summary-grid" class="summary-grid"></div><div class="verdict"></div><div class="limitation"></div>`;
+      const summaryGrid = document.querySelector("#summary-grid");
+      data.summary.forEach((metric) => { const item = document.createElement("div"); item.className = "summary-item"; item.innerHTML = `<strong></strong><span></span>`; item.querySelector("strong").textContent = metric.value; item.querySelector("span").textContent = metric.label; summaryGrid.append(item); });
+      setText(".verdict", data.verdict);
+      setText(".limitation", data.limitation);
+      document.querySelectorAll("#footer span").forEach((node, index) => { node.textContent = data.footer[index]; });
+
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["parallel-benchmark-capture"] = tl;
+      tl.fromTo("#top-rule", { scaleX: 0 }, { scaleX: 1, duration: .42, ease: "power3.out" }, .08);
+      tl.fromTo("#brand", { y: -18, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .42, ease: "power3.out" }, .14);
+      tl.fromTo("#eyebrow, #title, #subtitle", { x: -24, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .42, stagger: .09, ease: "power2.out" }, .24);
+      tl.fromTo("#header-readout", { x: 24, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .54, ease: "expo.out" }, .3);
+      tl.fromTo("#hero", { y: 22, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .5, ease: "power3.out" }, .62);
+      tl.fromTo("#rail", { scaleX: 0 }, { scaleX: 1, duration: .4, ease: "sine.inOut" }, .94);
+      tl.fromTo("#proof-grid", { y: 28, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .46, ease: "power3.out" }, 1.05);
+      tl.fromTo(".stream-card", { y: 16, scale: .96, autoAlpha: 0 }, { y: 0, scale: 1, autoAlpha: 1, duration: .32, stagger: .055, ease: "back.out(1.35)" }, 1.34);
+      tl.fromTo(".stream-bar i", { scaleX: 0 }, { scaleX: 1, duration: .52, stagger: .06, ease: "power2.out" }, 1.62);
+      tl.to(".orb", { rotation: 24, scale: 1.08, duration: 2.4, ease: "sine.inOut" }, .25);
+      tl.to("#proof-grid", { y: -20, autoAlpha: 0, duration: .3, ease: "power2.in" }, 3.7);
+      tl.fromTo("#proof-receipt", { x: 28, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .46, ease: "expo.out" }, 3.74);
+      tl.to("#rail", { scaleX: .48, duration: .32, ease: "power2.inOut" }, 3.78);
+      tl.to("#proof-receipt", { y: -18, autoAlpha: 0, duration: .32, ease: "power2.in" }, 5.42);
+      tl.fromTo("#summary-card", { y: 26, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .46, ease: "power3.out" }, 5.48);
+      tl.fromTo(".summary-item", { y: 17, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .3, stagger: .11, ease: "power2.out" }, 5.92);
+      tl.fromTo(".verdict", { x: 20, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .36, ease: "power3.out" }, 6.48);
+      tl.fromTo(".limitation", { x: 20, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .36, ease: "power1.out" }, 6.66);
+      tl.fromTo("#footer", { y: 12, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .32, ease: "sine.out" }, 7.12);
+      tl.to("#rail", { scaleX: .16, duration: .36, ease: "power1.inOut" }, 7.18);
+      tl.seek(0);
+    </script>
+  </body>
+</html>
