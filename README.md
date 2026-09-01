@@ -1,0 +1,112 @@
+# Parallel benchmark capture
+
+Live OpenAI-compatible concurrency benchmark dashboard and HyperFrames video
+publisher.
+
+[![Watch the parallel benchmark capture](docs/parallel-benchmark-capture-poster.png)](docs/parallel-benchmark-capture.mp4)
+
+## TL;DR
+
+The tool shows **16 users generating in parallel** in a responsive stream grid,
+then resolves to four measured run facts and the winning recipe. `LIVE` mode
+keeps the endpoint and key in a local Node controller. `REPLAY` mode uses a
+frozen, synthetic receipt so CI, screenshots, and HyperFrames renders are
+deterministic.
+
+The current checked-in receipt is a public-safe replay fixture. It is labeled
+`SSE CHUNK MODE`; no scheduler-step claim is made.
+
+## Quickstart
+
+```sh
+npm test
+npm run demo
+```
+
+Open `http://127.0.0.1:4173`. The demo starts the mock OpenAI-compatible SSE
+endpoint and the dashboard controller, then automatically replays the
+sanitized C16 fixture. Stop with `Ctrl-C`.
+
+Replay without a server:
+
+```sh
+npm run replay -- --concurrency 16
+```
+
+Run a real private capture only when the owning experiment has supplied a
+sanitized runtime handoff:
+
+```sh
+BENCH_ENDPOINT='https://endpoint.invalid/v1/chat/completions' \
+OPENAI_API_KEY='set-in-your-shell-only' \
+BENCH_MODEL='model-alias' \
+npm run capture -- --concurrency 16 --prompt-file ./prompts.local.json
+```
+
+The endpoint and key are consumed by the controller process only. They are not
+returned by the API, written to receipts, or included in the browser bundle.
+Replace the placeholder endpoint with the operator-provided private endpoint;
+do not commit it.
+
+For a version-gated ParallelHue sidecar, opt in explicitly and keep the
+NDJSON file local to the controller process:
+
+```sh
+BENCH_ENDPOINT='https://endpoint.invalid/v1/chat/completions' \
+OPENAI_API_KEY='set-in-your-shell-only' \
+BENCH_MODEL='model-alias' \
+BENCH_TELEMETRY_MODE='EXACT SCHEDULER STEP' \
+BENCH_PARALLELHUE_EVENTS_FILE='./telemetry.local.ndjson' \
+npm run capture -- --concurrency 16
+```
+
+The adapter fails closed if telemetry is missing, out of order, or cannot be
+reconciled with the returned text and token IDs. Without this explicit opt-in,
+all ordinary OpenAI-compatible streams remain `SSE CHUNK MODE`.
+
+## Modes and metrics
+
+- `LIVE` performs real concurrent requests through the controller.
+- `REPLAY` feeds the same event schema from the frozen fixture.
+- Ordinary OpenAI SSE is shown as `SSE CHUNK MODE`.
+- `EXACT SCHEDULER STEP` is reserved for a proven, version-gated telemetry
+  adapter; transport chunks never become scheduler steps by inference.
+- Aggregate decode is successful completion tokens divided by run wall time.
+- Per-request throughput is reported as a distribution, with TTFT,
+  completion count, and explicit failure/wedge labels.
+- Presets are 1/2/4/8/16, with arbitrary positive concurrency supported.
+
+## Project layout
+
+```text
+bin/parallel-benchmark.mjs     CLI entry point
+src/controller.mjs             HTTP controller and concurrent capture
+src/schema.mjs                 event/run validation and sanitization
+src/metrics.mjs                usage-authoritative metrics
+src/mock-endpoint.mjs          deterministic OpenAI-compatible SSE server
+public/index.html               responsive dashboard
+fixtures/replay-c16.json       sanitized replay source of truth
+schemas/*.schema.json           JSON Schema contracts
+hyperframes/                    editable replay-only video project
+```
+
+## HyperFrames render
+
+The video uses replay data only. From `hyperframes/`:
+
+```sh
+npm install
+npm run check
+npx hyperframes snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
+npx hyperframes render . --quality high --output ../outputs/parallel-benchmark-capture.mp4
+```
+
+The committed `hyperframes/replay-data.json` is a copy of the public replay
+receipt.
+There is no live endpoint dependency in the composition.
+
+## Attribution
+
+See [`NOTICE`](NOTICE). The event adapter is informed by the MIT-licensed
+[ParallelHue](https://github.com/hikarioyama/ParallelHue) project, while this
+repository keeps its own event schema, controller, and UI implementation.

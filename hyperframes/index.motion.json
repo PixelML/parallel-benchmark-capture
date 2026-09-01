@@ -1,0 +1,12 @@
+{
+  "duration": 8,
+  "maxStaticSec": 1.5,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#hero-title", "bySec": 0.7 },
+    { "kind": "before", "a": "#proof-grid", "b": "#proof-receipt" },
+    { "kind": "staysInFrame", "selector": "#proof-grid" },
+    { "kind": "staysInFrame", "selector": "#proof-receipt" },
+    { "kind": "staysInFrame", "selector": "#summary-card" },
+    { "kind": "keepsMoving", "withinSelector": "#benchmark-stage", "maxStaticSec": 1.5 }
+  ]
+}

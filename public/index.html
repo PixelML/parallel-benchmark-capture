@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PixelML · Parallel benchmark capture</title>
+  <style>
+    :root {
+      --ink: #eef4f2;
+      --muted: #8e9e9f;
+      --bg: #071012;
+      --panel: #0d1a1d;
+      --panel-hi: #14282b;
+      --line: #254348;
+      --lime: #c7f36a;
+      --aqua: #6fe1d0;
+      --amber: #ffc56b;
+      --rose: #ff8f91;
+      --mono: "SFMono-Regular", "Roboto Mono", ui-monospace, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+    body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .42; background-image: linear-gradient(rgba(111,225,208,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(111,225,208,.035) 1px, transparent 1px); background-size: 34px 34px; }
+    .shell { width: min(1560px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 44px; position: relative; }
+    .topline { height: 3px; background: linear-gradient(90deg, var(--lime), var(--aqua), transparent 78%); margin-bottom: 18px; }
+    header { display: grid; grid-template-columns: minmax(250px, 1.3fr) repeat(6, minmax(94px, .6fr)); gap: 12px; align-items: stretch; margin-bottom: 18px; }
+    .brand, .metric { border: 1px solid var(--line); background: rgba(13,26,29,.9); min-height: 76px; }
+    .brand { padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; }
+    .brand-line { display: flex; align-items: center; gap: 10px; }
+    .mark { width: 20px; height: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; }
+    .mark i { display: block; background: var(--lime); border-radius: 2px; }
+    .mark i:nth-child(2), .mark i:nth-child(3) { background: var(--aqua); }
+    .eyebrow { color: var(--muted); font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    h1 { font-size: clamp(17px, 2.1vw, 25px); letter-spacing: -.02em; margin: 0; font-weight: 720; }
+    .subline { color: var(--muted); font: 11px var(--mono); margin-top: 6px; }
+    .metric { padding: 11px 12px 9px; display: flex; flex-direction: column; justify-content: space-between; }
+    .metric dt { color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .metric dd { margin: 0; font: 700 clamp(18px, 2vw, 27px) var(--mono); color: var(--ink); }
+    .metric dd.accent { color: var(--lime); }
+    .metric dd.aqua { color: var(--aqua); }
+    .metric dd.warn { color: var(--rose); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin: 10px 0 18px; }
+    .toolbar button, .toolbar select, .toolbar input { color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 8px 11px; font: 12px var(--mono); }
+    .toolbar button { cursor: pointer; }
+    .toolbar button:hover, .toolbar button.selected { border-color: var(--aqua); color: var(--aqua); }
+    .toolbar label { color: var(--muted); font: 11px var(--mono); }
+    .toolbar input { flex: 1 1 240px; min-width: 180px; }
+    .state { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
+    .state strong { color: var(--lime); }
+    .streams { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .stream { min-height: 154px; padding: 10px; border: 1px solid var(--line); background: linear-gradient(150deg, rgba(20,40,43,.95), rgba(8,18,20,.96)); border-radius: 4px; display: flex; flex-direction: column; gap: 8px; transition: border-color .2s ease, transform .2s ease, background .2s ease; }
+    .stream.live { border-color: var(--aqua); box-shadow: 0 0 0 1px rgba(111,225,208,.08), 0 0 24px rgba(111,225,208,.08); }
+    .stream.done { border-color: rgba(199,243,106,.54); }
+    .stream.failed { border-color: rgba(255,143,145,.75); }
+    .stream-head { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); color: var(--muted); }
+    .stream-head .id { color: var(--ink); }
+    .pill { padding: 2px 5px; border-radius: 99px; border: 1px solid currentColor; font-size: 9px; }
+    .pill.live { color: var(--aqua); }
+    .pill.done { color: var(--lime); }
+    .pill.failed { color: var(--rose); }
+    .stream-output { flex: 1; color: #c8d6d4; white-space: pre-wrap; overflow: hidden; font: 11px/1.42 var(--mono); }
+    .stream-output::after { content: "▌"; color: var(--lime); animation: blink 1s steps(2, start) infinite; }
+    .stream.done .stream-output::after, .stream.failed .stream-output::after { content: ""; animation: none; }
+    .stream-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font: 9px var(--mono); }
+    .mode { color: var(--amber); }
+    .summary { margin-top: 18px; padding: 22px; border: 1px solid var(--line); background: rgba(13,26,29,.96); opacity: 0; transform: translateY(18px); pointer-events: none; transition: opacity .45s ease, transform .45s ease; }
+    .summary.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .summary-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+    .summary-title h2 { margin: 0; font-size: clamp(19px, 3vw, 31px); letter-spacing: -.03em; }
+    .summary-title span { color: var(--lime); font: 11px var(--mono); }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .summary-card { padding: 13px 14px; border-left: 3px solid var(--lime); background: rgba(7,16,18,.8); }
+    .summary-card:nth-child(2) { border-color: var(--aqua); }
+    .summary-card:nth-child(3) { border-color: var(--amber); }
+    .summary-card:nth-child(4) { border-color: var(--rose); }
+    .summary-card b { display: block; font: 700 clamp(19px, 3vw, 32px) var(--mono); }
+    .summary-card span { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .recipe { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font: 11px var(--mono); }
+    .recipe strong { color: var(--ink); font-weight: 500; }
+    footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; font: 10px var(--mono); }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (max-width: 1180px) { header { grid-template-columns: minmax(230px, 1.4fr) repeat(3, minmax(90px, 1fr)); } .brand { grid-column: span 1; } .streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { .shell { width: min(100% - 18px, 560px); padding-top: 12px; } header { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; } .brand { grid-column: span 2; } .metric { min-height: 64px; } .streams { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; } .stream { min-height: 142px; padding: 8px; } .stream-output { font-size: 10px; } .summary { padding: 15px; } .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-card { padding: 10px; } .state { width: 100%; margin-left: 0; } footer { flex-direction: column; } }
+    @media (max-width: 390px) { .streams { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topline"></div>
+    <header>
+      <section class="brand">
+        <div class="brand-line"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="eyebrow">PixelML / benchmark capture</span></div>
+        <div><h1 id="headline">16 users generating in parallel</h1><div class="subline" id="mode-line">REPLAY · SANITIZED RECEIPT · SSE CHUNK MODE</div></div>
+      </section>
+      <dl class="metric"><dt>active</dt><dd id="active">0</dd></dl>
+      <dl class="metric"><dt>done</dt><dd id="done" class="accent">0</dd></dl>
+      <dl class="metric"><dt>failed</dt><dd id="failed" class="warn">0</dd></dl>
+      <dl class="metric"><dt>wall time</dt><dd id="wall">0.00s</dd></dl>
+      <dl class="metric"><dt>tokens total</dt><dd id="tokens" class="aqua">0</dd></dl>
+      <dl class="metric"><dt>aggregate tok/s</dt><dd id="rate" class="accent">—</dd></dl>
+    </header>
+
+    <div class="toolbar" aria-label="Run controls">
+      <label for="mode-select">mode</label><select id="mode-select"><option>REPLAY</option><option>LIVE</option></select>
+      <label for="concurrency">users</label><select id="concurrency"><option>1</option><option>2</option><option>4</option><option>8</option><option selected>16</option><option>32</option><option>64</option></select>
+      <input id="prompt" aria-label="Live prompt" placeholder="Live prompt (kept in controller)" value="Measure one safe parallel stream">
+      <button id="run-button">Start run</button>
+      <span class="state" id="state">state: <strong>ready</strong></span>
+    </div>
+
+    <section class="streams" id="streams" aria-live="polite"></section>
+
+    <section class="summary" id="summary" aria-live="polite">
+      <div class="summary-title"><h2>Run resolved</h2><span id="summary-status">MEASURED REPLAY</span></div>
+      <div class="summary-grid">
+        <div class="summary-card"><b id="summary-users">—</b><span>simultaneous requests</span></div>
+        <div class="summary-card"><b id="summary-tokens">—</b><span>successful completion tokens</span></div>
+        <div class="summary-card"><b id="summary-rate">—</b><span>aggregate decode</span></div>
+        <div class="summary-card"><b id="summary-ttft">—</b><span>median TTFT</span></div>
+      </div>
+      <div class="recipe">winning recipe: <strong id="recipe">—</strong></div>
+    </section>
+    <footer><span>TRUTH LABEL: <strong id="footer-mode">SSE CHUNK MODE</strong></span><span>Tokens are authoritative only at final usage.</span></footer>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { run: null, streams: new Map(), startedAt: 0, eventSource: null };
+    const streamRoot = $("streams");
+
+    function reset(concurrency, mode) {
+      if (state.eventSource) state.eventSource.close();
+      state.streams.clear();
+      state.startedAt = performance.now();
+      state.run = null;
+      $("headline").textContent = `${concurrency} users generating in parallel`;
+      $("mode-line").textContent = `${mode} · SANITIZED RECEIPT · SSE CHUNK MODE`;
+      $("summary").classList.remove("visible");
+      $("state").innerHTML = "state: <strong>starting</strong>";
+      streamRoot.replaceChildren();
+      for (let index = 0; index < concurrency; index += 1) {
+        const element = document.createElement("article");
+        element.className = "stream";
+        element.id = `stream-${index}`;
+        element.innerHTML = `<div class="stream-head"><span class="id">U${String(index).padStart(2, "0")}</span><span class="pill live">ACTIVE</span></div><div class="stream-output"></div><div class="stream-meta"><span class="mode">SSE CHUNK MODE</span><span class="progress">0 chunks · — tokens</span></div>`;
+        streamRoot.append(element);
+        state.streams.set(index, { element, status: "active", text: "", chunks: 0, tokenProgress: 0, usage: null });
+      }
+      updateHeader();
+    }
+
+    function updateHeader(summary = null) {
+      const streams = [...state.streams.values()];
+      const active = streams.filter((item) => item.status === "active").length;
+      const done = streams.filter((item) => item.status === "done").length;
+      const failed = streams.filter((item) => item.status === "failed").length;
+      const tokens = streams.reduce((total, item) => total + (item.usage?.completion_tokens || 0), 0);
+      $("active").textContent = active;
+      $("done").textContent = done;
+      $("failed").textContent = failed;
+      $("tokens").textContent = tokens.toLocaleString();
+      const elapsed = summary ? summary.wall_time_ms / 1000 : Math.max(0, (performance.now() - state.startedAt) / 1000);
+      $("wall").textContent = `${elapsed.toFixed(2)}s`;
+      $("rate").textContent = summary?.aggregate_decode_tok_s == null ? "—" : `${summary.aggregate_decode_tok_s.toFixed(1)}`;
+    }
+
+    function renderEvent(event) {
+      if (event.event_type === "run.started") {
+        state.run = event;
+        $("headline").textContent = `${event.recipe.concurrency} users generating in parallel`;
+        $("mode-line").textContent = `${event.run_mode} · SANITIZED RECEIPT · ${event.recipe.telemetry_mode}`;
+        $("footer-mode").textContent = event.recipe.telemetry_mode;
+        return;
+      }
+      if (event.request_id) {
+        const item = state.streams.get(event.stream_index);
+        if (!item) return;
+        if (event.event_type === "stream.delta") {
+          item.text += event.text || "";
+          item.chunks += 1;
+          item.tokenProgress += (event.token_ids || []).length;
+          item.element.querySelector(".stream-output").textContent = item.text;
+          item.element.querySelector(".progress").textContent = `${item.chunks} chunks · ${item.tokenProgress || "—"} tokens`;
+        } else if (event.event_type === "stream.completed") {
+          item.status = event.status === "success" ? "done" : "failed";
+          item.usage = event.usage;
+          item.element.classList.toggle("done", item.status === "done");
+          item.element.classList.toggle("failed", item.status === "failed");
+          const pill = item.element.querySelector(".pill");
+          pill.textContent = item.status === "done" ? "DONE" : "USAGE UNAVAILABLE";
+          pill.className = `pill ${item.status}`;
+          item.element.querySelector(".progress").textContent = item.usage ? `${item.chunks} chunks · ${item.usage.completion_tokens} tokens` : `${item.chunks} chunks · usage unavailable`;
+        } else if (event.event_type === "stream.failed") {
+          item.status = "failed";
+          item.element.classList.remove("live");
+          item.element.classList.add("failed");
+          const pill = item.element.querySelector(".pill");
+          pill.textContent = event.failure_kind.toUpperCase();
+          pill.className = "pill failed";
+          item.element.querySelector(".progress").textContent = `${item.chunks} chunks · ${event.failure_kind}`;
+        }
+        if (event.mode) item.element.querySelector(".mode").textContent = event.mode;
+      }
+      updateHeader();
+      if (event.event_type === "run.completed") finish(event.summary);
+    }
+
+    function finish(summary) {
+      updateHeader(summary);
+      $("state").innerHTML = "state: <strong>resolved</strong>";
+      $("summary-status").textContent = `${state.run?.run_mode || "RUN"} · ${state.run?.recipe?.telemetry_mode || "SSE CHUNK MODE"}`;
+      $("summary-users").textContent = summary.requested_concurrency;
+      $("summary-tokens").textContent = summary.total_completion_tokens.toLocaleString();
+      $("summary-rate").textContent = summary.aggregate_decode_tok_s == null ? "—" : `${summary.aggregate_decode_tok_s.toFixed(1)} tok/s`;
+      $("summary-ttft").textContent = summary.ttft_ms == null ? "—" : `${summary.ttft_ms.toFixed(0)} ms`;
+      $("recipe").textContent = summary.winning_recipe;
+      window.setTimeout(() => $("summary").classList.add("visible"), 260);
+    }
+
+    async function start() {
+      const mode = $("mode-select").value;
+      const concurrency = Number($("concurrency").value);
+      reset(concurrency, mode);
+      const payload = { mode, concurrency };
+      if (mode === "LIVE") payload.prompt = $("prompt").value;
+      const response = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const run = await response.json();
+      if (!response.ok) throw new Error(run.error || "run could not start");
+      state.eventSource = new EventSource(`/api/runs/${encodeURIComponent(run.run_id)}/events`);
+      state.eventSource.onmessage = (message) => renderEvent(JSON.parse(message.data));
+      state.eventSource.onerror = () => { if (!state.run) $("state").innerHTML = "state: <strong>waiting</strong>"; };
+    }
+
+    $("run-button").addEventListener("click", () => start().catch((error) => { $("state").innerHTML = `state: <strong>${error.message}</strong>`; }));
+    start().catch((error) => { $("state").innerHTML = `state: <strong>${error.message}</strong>`; });
+  </script>
+</body>
+</html>

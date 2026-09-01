@@ -1,0 +1,36 @@
+{
+  "title": "Parallel benchmark",
+  "subtitle": "16 simultaneous requests · deterministic replay",
+  "eyebrow": "SSE CHUNK MODE · SANITIZED REPLAY",
+  "headline": "16 USERS. ONE RUN.",
+  "status": "REPLAY PROOF",
+  "scenes": [
+    {
+      "label": "01 · MULTI-STREAM RUN",
+      "title": "Streams arrive together",
+      "body": "16 users generating in parallel; each tile keeps its own progress lane.",
+      "metrics": [
+        { "value": "16", "label": "simultaneous requests" },
+        { "value": "16/16", "label": "completed cleanly" }
+      ]
+    },
+    {
+      "label": "02 · AUTHORITATIVE RECEIPT",
+      "title": "Usage closes the run",
+      "body": "Final API usage is the source of truth; chunks never become scheduler steps.",
+      "metrics": [
+        { "value": "96", "label": "successful completion tokens" },
+        { "value": "70.8", "label": "aggregate decode tok/s" }
+      ]
+    }
+  ],
+  "summary": [
+    { "value": "16", "label": "simultaneous requests" },
+    { "value": "96", "label": "successful completion tokens" },
+    { "value": "70.8", "label": "aggregate decode tok/s" },
+    { "value": "102 ms", "label": "median TTFT" }
+  ],
+  "verdict": "A replayable 16-stream run is visible end to end.",
+  "limitation": "Synthetic receipt · SSE chunk mode · no scheduler-step claim",
+  "footer": ["16 simultaneous requests", "USAGE: AUTHORITATIVE", "PixelML benchmark capture"]
+}
