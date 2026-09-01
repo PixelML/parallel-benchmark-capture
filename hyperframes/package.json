@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "npx --yes hyperframes@0.8.22 preview",
-    "check": "npx --yes hyperframes@0.8.22 check",
-    "render": "npx --yes hyperframes@0.8.22 render"
+    "dev": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes preview",
+    "check": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes check",
+    "render": "npm exec --yes --package=hyperframes@0.8.22 -- hyperframes render"
   }
 }

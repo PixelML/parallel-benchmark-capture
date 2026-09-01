@@ -109,9 +109,9 @@ The video uses replay data only. From `hyperframes/`:
 ```sh
 npm install
 npm run build
-npx --yes hyperframes@0.8.22 check
-npx --yes hyperframes@0.8.22 snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
-npx --yes hyperframes@0.8.22 render . --quality high --workers 2 --output ../docs/parallel-benchmark-capture.mp4
+npm exec --yes --package=hyperframes@0.8.22 -- hyperframes check .
+npm exec --yes --package=hyperframes@0.8.22 -- hyperframes snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
+npm exec --yes --package=hyperframes@0.8.22 -- hyperframes render . --quality high --workers 2 --output ../docs/parallel-benchmark-capture.mp4
 ffmpeg -y -i ../docs/parallel-benchmark-capture.mp4 -vf 'select=eq(n\,239)' -fps_mode vfr -frames:v 1 -update 1 ../docs/parallel-benchmark-capture-poster.png
 ```
 
