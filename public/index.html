@@ -79,6 +79,8 @@
     .summary-card span { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
     .recipe { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font: 11px var(--mono); }
     .recipe strong { color: var(--ink); font-weight: 500; }
+    .distribution { margin-top: 10px; color: var(--muted); font: 10px/1.45 var(--mono); overflow-wrap: anywhere; }
+    .distribution strong { color: var(--aqua); font-weight: 600; }
     footer { margin-top: 18px; color: var(--muted); display: flex; justify-content: space-between; gap: 12px; font: 10px var(--mono); }
     @keyframes blink { 50% { opacity: 0; } }
     @media (max-width: 1180px) { header { grid-template-columns: minmax(230px, 1.4fr) repeat(3, minmax(90px, 1fr)); } .brand { grid-column: span 1; } .streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -121,6 +123,7 @@
         <div class="summary-card"><b id="summary-ttft">—</b><span>median TTFT</span></div>
       </div>
       <div class="recipe">winning recipe: <strong id="recipe">—</strong></div>
+      <div class="distribution" id="distribution" aria-live="polite">per-request distribution: —</div>
     </section>
     <footer><span>TRUTH LABEL: <strong id="footer-mode">SSE CHUNK MODE</strong></span><span>Tokens are authoritative only at final usage.</span></footer>
   </div>
@@ -215,6 +218,16 @@
       $("summary-rate").textContent = summary.aggregate_decode_tok_s == null ? "—" : `${summary.aggregate_decode_tok_s.toFixed(1)} tok/s`;
       $("summary-ttft").textContent = summary.ttft_ms == null ? "—" : `${summary.ttft_ms.toFixed(0)} ms`;
       $("recipe").textContent = summary.winning_recipe;
+      const successfulRates = (summary.throughput_distribution || [])
+        .filter((item) => item.status === "success" && item.tok_s != null)
+        .sort((a, b) => a.stream_index - b.stream_index);
+      const distribution = successfulRates.length
+        ? successfulRates.map((item) => `U${String(item.stream_index).padStart(2, "0")} ${item.tok_s.toFixed(1)}`).join(" · ")
+        : "unavailable";
+      const successRate = summary.requested_concurrency > 0
+        ? `${((summary.completed_count / summary.requested_concurrency) * 100).toFixed(1)}%`
+        : "—";
+      $("distribution").innerHTML = `<strong>success rate ${successRate}</strong> · request tok/s: ${distribution}`;
       window.setTimeout(() => $("summary").classList.add("visible"), 260);
     }
 
