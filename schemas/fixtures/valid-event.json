@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "event_type": "stream.delta",
+  "run_id": "schema_fixture",
+  "request_id": "req_schema_fixture_00",
+  "stream_index": 0,
+  "elapsed_ms": 42,
+  "mode": "SSE CHUNK MODE",
+  "sequence": 0,
+  "text": "hello ",
+  "token_ids": [101]
+}

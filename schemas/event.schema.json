@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pixelml.example/schemas/parallel-benchmark-event-v1.json",
+  "$id": "event.schema.json",
   "title": "Parallel benchmark event",
   "type": "object",
   "required": ["schema_version", "event_type", "run_id", "elapsed_ms"],
@@ -44,5 +44,31 @@
     "error_code": { "type": "string", "pattern": "^[a-z0-9_]{1,48}$" },
     "summary": { "type": "object" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "const": "run.started" } }, "required": ["event_type"] },
+      "then": { "required": ["run_mode", "recipe"] }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "run.completed" } }, "required": ["event_type"] },
+      "then": { "required": ["summary"] }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "stream.started" } }, "required": ["event_type"] },
+      "then": { "required": ["request_id", "stream_index", "mode"] }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "stream.delta" } }, "required": ["event_type"] },
+      "then": { "required": ["request_id", "stream_index", "mode", "sequence", "text", "token_ids"] }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "stream.completed" } }, "required": ["event_type"] },
+      "then": { "required": ["request_id", "stream_index", "mode", "sequence", "status", "finish_reason", "usage"] }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "stream.failed" } }, "required": ["event_type"] },
+      "then": { "required": ["request_id", "stream_index", "mode", "sequence", "failure_kind", "error_code"] }
+    }
+  ],
   "additionalProperties": false
 }

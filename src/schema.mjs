@@ -71,6 +71,11 @@ function nonNegativeInt(value, field) {
   return value;
 }
 
+function boundedInt(value, field, minimum, maximum) {
+  assert(Number.isInteger(value) && value >= minimum && value <= maximum, `${field} must be an integer from ${minimum} to ${maximum}`);
+  return value;
+}
+
 function safeRunId(value) {
   assert(typeof value === "string" && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value), "invalid run_id");
   return value;
@@ -133,58 +138,78 @@ export function validateEvent(input) {
 
   if (input.event_type === "run.started") {
     assert(RUN_MODES.includes(input.run_mode), "run.started requires LIVE or REPLAY run_mode");
-    const recipe = input.recipe && typeof input.recipe === "object" ? input.recipe : {};
+    assert(input.recipe && typeof input.recipe === "object" && !Array.isArray(input.recipe), "run.started requires recipe");
+    const recipe = input.recipe;
+    boundedInt(recipe.concurrency, "recipe.concurrency", 1, 64);
+    boundedInt(recipe.max_tokens, "recipe.max_tokens", 1, 4096);
+    assert(typeof recipe.model_label === "string", "recipe.model_label must be a string");
+    assert(MODES.includes(recipe.telemetry_mode), "recipe.telemetry_mode must be a supported mode");
     event.run_mode = input.run_mode;
     event.recipe = {
-      concurrency: nonNegativeInt(recipe.concurrency, "recipe.concurrency"),
-      max_tokens: nonNegativeInt(recipe.max_tokens, "recipe.max_tokens"),
-      model_label: sanitizeText(String(recipe.model_label || "private model"), 80),
-      telemetry_mode: MODES.includes(recipe.telemetry_mode) ? recipe.telemetry_mode : "SSE CHUNK MODE",
+      concurrency: recipe.concurrency,
+      max_tokens: recipe.max_tokens,
+      model_label: sanitizeText(recipe.model_label, 80),
+      telemetry_mode: recipe.telemetry_mode,
     };
     return event;
   }
 
   if (input.event_type === "run.completed") {
-    const summary = input.summary && typeof input.summary === "object" ? input.summary : {};
-    event.summary = validateSummary(summary);
+    assert(input.summary && typeof input.summary === "object" && !Array.isArray(input.summary), "run.completed requires summary");
+    event.summary = validateSummary(input.summary);
     return event;
   }
 
+  assert(typeof input.request_id === "string", `${input.event_type} requires request_id`);
+  boundedInt(input.stream_index, "stream_index", 0, 63);
   event.request_id = safeRequestId(input.request_id);
-  event.stream_index = nonNegativeInt(input.stream_index, "stream_index");
+  event.stream_index = input.stream_index;
   assert(event.request_id.endsWith(`_${String(event.stream_index).padStart(2, "0")}`), "request_id stream index mismatch");
 
   if (input.event_type === "stream.started") {
-    event.mode = MODES.includes(input.mode) ? input.mode : "SSE CHUNK MODE";
+    assert(MODES.includes(input.mode), "stream.started requires mode");
+    event.mode = input.mode;
     return event;
   }
 
+  assert(Number.isInteger(input.sequence), `${input.event_type} requires sequence`);
   event.sequence = nonNegativeInt(input.sequence, "sequence");
   if (input.event_type === "stream.delta") {
-    event.mode = MODES.includes(input.mode) ? input.mode : "SSE CHUNK MODE";
-    event.text = sanitizeText(input.text || "");
-    event.token_ids = input.token_ids == null ? [] : validateTokenIds(input.token_ids);
+    assert(MODES.includes(input.mode), "stream.delta requires mode");
+    assert(typeof input.text === "string", "stream.delta requires text");
+    assert(Array.isArray(input.token_ids), "stream.delta requires token_ids");
+    event.mode = input.mode;
+    event.text = sanitizeText(input.text);
+    event.token_ids = validateTokenIds(input.token_ids);
     if (input.step_id != null) event.step_id = nonNegativeInt(input.step_id, "step_id");
     return event;
   }
 
   if (input.event_type === "stream.completed") {
-    event.status = input.status === "usage_unavailable" ? "usage_unavailable" : "success";
-    event.finish_reason = sanitizeText(String(input.finish_reason || "stop"), 40);
+    assert(input.status === "success" || input.status === "usage_unavailable", "stream.completed requires status");
+    assert(typeof input.finish_reason === "string", "stream.completed requires finish_reason");
+    assert(MODES.includes(input.mode), "stream.completed requires mode");
+    if (input.usage !== null && input.usage !== undefined) validateUsage(input.usage);
+    assert(Object.hasOwn(input, "usage"), "stream.completed requires usage");
+    event.status = input.status;
+    event.finish_reason = sanitizeText(input.finish_reason, 40);
     event.usage = validateUsage(input.usage);
-    event.mode = MODES.includes(input.mode) ? input.mode : "SSE CHUNK MODE";
+    event.mode = input.mode;
     return event;
   }
 
-  event.failure_kind = FAILURE_KINDS.includes(input.failure_kind) ? input.failure_kind : "unknown";
+  assert(FAILURE_KINDS.includes(input.failure_kind), "stream.failed requires failure_kind");
+  assert(typeof input.error_code === "string", "stream.failed requires error_code");
+  assert(MODES.includes(input.mode), "stream.failed requires mode");
+  event.failure_kind = input.failure_kind;
   event.error_code = sanitizeErrorCode(input.error_code);
-  event.mode = MODES.includes(input.mode) ? input.mode : "SSE CHUNK MODE";
+  event.mode = input.mode;
   return event;
 }
 
 export function validateSummary(input) {
   const summary = {
-    requested_concurrency: nonNegativeInt(input.requested_concurrency || 0, "requested_concurrency"),
+    requested_concurrency: boundedInt(input.requested_concurrency, "requested_concurrency", 1, 64),
     active_count: nonNegativeInt(input.active_count || 0, "active_count"),
     completed_count: nonNegativeInt(input.completed_count || 0, "completed_count"),
     failed_count: nonNegativeInt(input.failed_count || 0, "failed_count"),

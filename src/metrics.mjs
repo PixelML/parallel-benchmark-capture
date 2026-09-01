@@ -16,7 +16,31 @@ function round(value, digits = 3) {
  * usage objects; delta token IDs are progress evidence, never the authority.
  */
 export function computeSummary(events, requestedConcurrency = 0, winningRecipe = "not selected") {
-  const validated = events.map(validateEvent);
+  // Callers may include the run.completed envelope as a wall-clock marker
+  // before its computed summary exists. Keep that construction detail local;
+  // every emitted and persisted event is validated again with a real summary.
+  const validated = events.map((event) => {
+    if (event?.event_type === "run.completed" && event.summary && Object.keys(event.summary).length === 0) {
+      return validateEvent({
+        ...event,
+        summary: {
+          requested_concurrency: Math.max(1, requestedConcurrency || 1),
+          active_count: 0,
+          completed_count: 0,
+          failed_count: 0,
+          wall_time_ms: event.elapsed_ms,
+          total_completion_tokens: 0,
+          aggregate_decode_tok_s: null,
+          ttft_ms: null,
+          completion_count: 0,
+          throughput_distribution: [],
+          failure_labels: [],
+          winning_recipe: "pending",
+        },
+      });
+    }
+    return validateEvent(event);
+  });
   const streams = new Map();
   let runStarted = validated.find((event) => event.event_type === "run.started");
   let runCompleted = validated.find((event) => event.event_type === "run.completed");

@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { validateEvent, SchemaError } from "./schema.mjs";
 
+export const PARALLELHUE_PROTOCOL_REVISION = "be9b02680f0a2326cc7068dc592dd0ad2fe7de71";
+
 /**
  * Read a sanitized ParallelHue StepEvent NDJSON sidecar.
  *
@@ -84,6 +86,7 @@ function normalizeStepEvent(raw) {
   });
   return {
     ...normalized,
+    parallelhue_run_id: match[1],
     parallelhue_request_id: requestId,
     finished: raw.finished === true,
     choice_index: raw.choice_index,

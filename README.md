@@ -57,12 +57,19 @@ OPENAI_API_KEY='set-in-your-shell-only' \
 BENCH_MODEL='model-alias' \
 BENCH_TELEMETRY_MODE='EXACT SCHEDULER STEP' \
 BENCH_PARALLELHUE_EVENTS_FILE='./telemetry.local.ndjson' \
+BENCH_PARALLELHUE_RUN_ID='0123456789abcdef0123456789abcdef' \
 npm run capture -- --concurrency 16
 ```
 
-The adapter fails closed if telemetry is missing, out of order, or cannot be
-reconciled with the returned text and token IDs. Without this explicit opt-in,
-all ordinary OpenAI-compatible streams remain `SSE CHUNK MODE`.
+The adapter is pinned to the public ParallelHue revision
+[`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
+The owning experiment must supply the fresh 32-character run ID and its
+same-run, sanitized sidecar together. For each stream the controller sends the
+official `ph1_<run_id>_<stream>` value as the request body's `request_id`, then
+requires the sidecar's run ID, request ID, and `choice_index: 0` to match before
+reconciling text and token IDs. A stale or differently bound sidecar fails
+closed before any request is sent. Without this explicit opt-in, all ordinary
+OpenAI-compatible streams remain `SSE CHUNK MODE`.
 
 ## Modes and metrics
 
@@ -96,14 +103,19 @@ The video uses replay data only. From `hyperframes/`:
 
 ```sh
 npm install
-npm run check
-npx hyperframes snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
-npx hyperframes render . --quality high --output ../outputs/parallel-benchmark-capture.mp4
+npm run build
+npx --yes hyperframes@0.8.22 check
+npx --yes hyperframes@0.8.22 snapshot . --at 0.4,2.2,4.8,7.7 --output ./snapshots
+npx --yes hyperframes@0.8.22 render . --quality high --workers 2 --output ../docs/parallel-benchmark-capture.mp4
+ffmpeg -y -sseof -0.1 -i ../docs/parallel-benchmark-capture.mp4 -frames:v 1 ../docs/parallel-benchmark-capture-poster.png
 ```
+
+The render command writes directly to the linked `docs/` artifact, and the
+last command regenerates its poster from the final frame. The composition uses
+replay data only; it has no live endpoint dependency.
 
 The committed `hyperframes/replay-data.json` is a copy of the public replay
 receipt.
-There is no live endpoint dependency in the composition.
 
 ## Attribution
 

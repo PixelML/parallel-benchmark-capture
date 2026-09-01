@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pixelml.example/schemas/parallel-benchmark-run-v1.json",
+  "$id": "run.schema.json",
   "title": "Parallel benchmark run",
   "type": "object",
   "required": ["schema_version", "kind", "run_id", "run_mode", "events", "summary"],
@@ -9,10 +9,10 @@
     "kind": { "const": "benchmark.run" },
     "run_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
     "run_mode": { "enum": ["LIVE", "REPLAY"] },
-    "events": { "type": "array", "items": { "$ref": "parallel-benchmark-event-v1.json" } },
+    "events": { "type": "array", "items": { "$ref": "event.schema.json" } },
     "summary": {
       "type": "object",
-      "required": ["requested_concurrency", "completed_count", "failed_count", "wall_time_ms", "total_completion_tokens", "aggregate_decode_tok_s", "ttft_ms", "completion_count", "throughput_distribution", "failure_labels", "winning_recipe"],
+      "required": ["requested_concurrency", "active_count", "completed_count", "failed_count", "wall_time_ms", "total_completion_tokens", "aggregate_decode_tok_s", "ttft_ms", "completion_count", "throughput_distribution", "failure_labels", "winning_recipe"],
       "properties": {
         "requested_concurrency": { "type": "integer", "minimum": 1, "maximum": 64 },
         "active_count": { "type": "integer", "minimum": 0 },
@@ -23,8 +23,29 @@
         "aggregate_decode_tok_s": { "type": ["number", "null"], "minimum": 0 },
         "ttft_ms": { "type": ["number", "null"], "minimum": 0 },
         "completion_count": { "type": "integer", "minimum": 0 },
-        "throughput_distribution": { "type": "array" },
-        "failure_labels": { "type": "array", "items": { "type": "string" } },
+        "throughput_distribution": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": ["stream_index", "completion_tokens", "wall_time_ms", "tok_s", "status", "ttft_ms", "failure_kind"],
+            "properties": {
+              "stream_index": { "type": "integer", "minimum": 0, "maximum": 63 },
+              "completion_tokens": { "type": "integer", "minimum": 0 },
+              "wall_time_ms": { "type": "integer", "minimum": 0 },
+              "tok_s": { "type": ["number", "null"], "minimum": 0 },
+              "status": { "enum": ["success", "failed"] },
+              "ttft_ms": { "type": ["number", "null"], "minimum": 0 },
+              "failure_kind": { "type": ["string", "null"], "enum": ["http", "timeout", "wedge", "parse", "usage_unavailable", "telemetry", "unknown", null] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "failure_labels": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "enum": ["http", "timeout", "wedge", "parse", "usage_unavailable", "telemetry", "unknown"] }
+        },
         "winning_recipe": { "type": "string", "maxLength": 120 }
       },
       "additionalProperties": false

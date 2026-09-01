@@ -15,5 +15,8 @@
     "capture": "node bin/parallel-benchmark.mjs capture",
     "replay": "node bin/parallel-benchmark.mjs replay",
     "validate:fixture": "node bin/parallel-benchmark.mjs validate-fixture"
+  },
+  "devDependencies": {
+    "ajv": "8.17.1"
   }
 }

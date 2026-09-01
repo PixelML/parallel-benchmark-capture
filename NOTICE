@@ -4,6 +4,9 @@ ParallelHue attribution
 This project is informed by ParallelHue, an MIT-licensed open-source project:
 https://github.com/hikarioyama/ParallelHue
 
+The compatible adapter contract is pinned to the public revision
+https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71.
+
 The dashboard uses a small, compatible adapter for ParallelHue's published
 StepEvent semantics (explicit exact telemetry versus SSE chunk mode). No
 ParallelHue source files are copied into this project.

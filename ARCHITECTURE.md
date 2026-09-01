@@ -39,6 +39,16 @@ authoritative final `usage` object. A failed or wedged stream carries
 proves the event stream and reconciliation contract; the controller never
 infers scheduler steps from transport chunks.
 
+The exact adapter is pinned to ParallelHue revision
+[`be9b02680f0a2326cc7068dc592dd0ad2fe7de71`](https://github.com/hikarioyama/ParallelHue/tree/be9b02680f0a2326cc7068dc592dd0ad2fe7de71).
+An owning experiment supplies a fresh run ID and a sanitized, same-run sidecar
+export. For stream `i`, the controller sends
+`ph1_<32-hex-run-id>_<i>` in the OpenAI-compatible request body's
+`request_id`; the sidecar must carry the same run ID and request ID, with
+`choice_index: 0`. The controller rejects stale/differently bound exports
+before dispatch and then reconciles every SSE chunk against the ordered text
+and token IDs. The run ID is controller-only and never enters a public event.
+
 ## Live flow
 
 1. `POST /api/runs` validates a preset or arbitrary concurrency and creates a
@@ -68,3 +78,5 @@ grid first, then the four key numbers and winning recipe.
 - The public fixture is synthetic and explicitly labeled `SSE CHUNK MODE`.
 - Completion tokens come only from a final usage object. Missing usage is an
   explicit `usage_unavailable` condition.
+- Exact telemetry is opt-in only; a fresh owner handoff binds the sidecar to a
+  single ParallelHue run and stale or mismatched IDs fail closed.

@@ -20,7 +20,7 @@ function streamIndex(requestBody) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-export function createMockServer({ port = 4180, host = "127.0.0.1", delayMs = 45 } = {}) {
+export function createMockServer({ port = 4180, host = "127.0.0.1", delayMs = 45, onRequest = null } = {}) {
   const server = createServer(async (request, response) => {
     if (request.method === "GET" && request.url === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
@@ -33,6 +33,7 @@ export function createMockServer({ port = 4180, host = "127.0.0.1", delayMs = 45
       return;
     }
     const body = await readJson(request);
+    if (typeof onRequest === "function") onRequest(body);
     const index = streamIndex(body);
     const maxTokens = Number.isInteger(body.max_tokens) ? Math.max(1, Math.min(body.max_tokens, 64)) : 32;
     const output = Array.from({ length: Math.min(6, Math.max(3, Math.ceil(maxTokens / 10))) }, (_, chunkIndex) => {

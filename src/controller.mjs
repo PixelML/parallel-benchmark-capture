@@ -73,6 +73,17 @@ function safeTimeout(value, fallback = 30_000) {
   return timeout;
 }
 
+function safeParallelHueRunId(value) {
+  if (typeof value !== "string" || !/^[0-9a-f]{32}$/.test(value)) {
+    throw new SchemaError("exact telemetry requires a 32-character ParallelHue run_id");
+  }
+  return value;
+}
+
+function parallelHueRequestId(runId, streamIndex) {
+  return `ph1_${safeParallelHueRunId(runId)}_${streamIndex}`;
+}
+
 function normalizeUsage(value) {
   if (!value || typeof value !== "object") return null;
   const usage = {
@@ -99,10 +110,12 @@ function publicRun(run) {
 }
 
 class RunState {
-  constructor({ runId, runMode, recipe }) {
+  constructor({ runId, runMode, recipe, parallelhueRunId = null }) {
     this.run_id = runId;
     this.run_mode = runMode;
     this.recipe = recipe;
+    // This is controller-only handoff state. It is never emitted or persisted.
+    this.parallelhueRunId = parallelhueRunId;
     this.events = [];
     this.summary = null;
     this.done = false;
@@ -150,6 +163,7 @@ export class BenchmarkController {
     model = process.env.BENCH_MODEL || "",
     telemetryMode = process.env.BENCH_TELEMETRY_MODE || "SSE CHUNK MODE",
     telemetryFile = process.env.BENCH_PARALLELHUE_EVENTS_FILE || "",
+    parallelhueRunId = process.env.BENCH_PARALLELHUE_RUN_ID || "",
   } = {}) {
     this.fixturePath = fixturePath;
     this.publicDir = publicDir;
@@ -159,6 +173,7 @@ export class BenchmarkController {
     this.model = model;
     this.telemetryMode = telemetryMode === "EXACT SCHEDULER STEP" ? telemetryMode : "SSE CHUNK MODE";
     this.telemetryFile = telemetryFile;
+    this.parallelhueRunId = parallelhueRunId;
     this.runs = new Map();
   }
 
@@ -202,17 +217,35 @@ export class BenchmarkController {
       throw new SchemaError("live endpoint is not configured");
     }
     let telemetryByStream = new Map();
+    let selectedParallelHueRunId = null;
     if (this.telemetryMode === "EXACT SCHEDULER STEP") {
       if (!this.telemetryFile) throw new SchemaError("exact telemetry requires a local ParallelHue sidecar");
+      // The owning experiment supplies this fresh run ID in the same handoff
+      // as the sidecar. Never infer it from a file that could be stale.
+      selectedParallelHueRunId = safeParallelHueRunId(this.parallelhueRunId);
       telemetryByStream = indexTelemetryByStream(await loadParallelHueTelemetry(this.telemetryFile));
       for (let streamIndex = 0; streamIndex < selectedConcurrency; streamIndex += 1) {
-        if (!telemetryByStream.has(streamIndex)) throw new SchemaError("exact telemetry is missing a requested stream");
+        const events = telemetryByStream.get(streamIndex);
+        if (!events?.length) throw new SchemaError("exact telemetry is missing a requested stream");
+        const expectedRequestId = parallelHueRequestId(selectedParallelHueRunId, streamIndex);
+        for (const event of events) {
+          if (event.parallelhue_run_id !== selectedParallelHueRunId) {
+            throw new SchemaError("exact telemetry run_id does not match the owner-supplied run");
+          }
+          if (event.parallelhue_request_id !== expectedRequestId) {
+            throw new SchemaError("exact telemetry request_id does not match the requested stream");
+          }
+          if (event.choice_index !== 0) {
+            throw new SchemaError("exact telemetry only supports choice_index 0");
+          }
+        }
       }
     }
     const selectedRunId = runId || createRunId("run");
     const run = new RunState({
       runId: selectedRunId,
       runMode: "LIVE",
+      parallelhueRunId: selectedParallelHueRunId,
       recipe: {
         concurrency: selectedConcurrency,
         max_tokens: selectedMaxTokens,
@@ -278,18 +311,18 @@ export class BenchmarkController {
     try {
       const endpoint = this.endpoint;
       const isChat = /\/chat\/completions(?:\/)?$/i.test(endpoint);
+      const parallelHueRequest = exact ? parallelHueRequestId(run.parallelhueRunId, streamIndex) : null;
       const body = {
         model: this.model,
         max_tokens: maxTokens,
         stream: true,
         stream_options: { include_usage: true },
-        ...(exact ? { return_token_ids: true } : {}),
+        ...(exact ? { return_token_ids: true, request_id: parallelHueRequest } : {}),
         ...(isChat ? { messages: [{ role: "user", content: prompt }] } : { prompt }),
       };
       const headers = {
         accept: "text/event-stream",
         "content-type": "application/json",
-        "x-parallel-benchmark-request-id": requestId,
       };
       if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
       const response = await fetch(endpoint, {
